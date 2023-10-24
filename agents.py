@@ -33,10 +33,10 @@ class Agent:
         self.lagrange = self.phi + self.energy_cost + \
                         cp.multiply(self.u_in, self.x_in).sum() + \
                         cp.multiply(self.u_out, self.x_out).sum() + \
-                        gamma_1 * cp.sum_squares(self.x_in - self.old_x_in) + \
-                        gamma_1 * cp.sum_squares(self.x_out - self.old_x_out) + \
-                        beta * cp.sum_squares(self.x_in - self.y_ext) + \
-                        beta * cp.sum_squares(self.x_out - self.y)
+                        0.5*gamma_1 * cp.sum_squares(self.x_in - self.old_x_in) + \
+                        0.5*gamma_1 * cp.sum_squares(self.x_out - self.old_x_out) + \
+                        0.5*beta * cp.sum_squares(self.x_in - self.y_ext) + \
+                        0.5*beta * cp.sum_squares(self.x_out - self.y)
        
                       
 

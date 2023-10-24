@@ -10,11 +10,12 @@ import matplotlib.pyplot as plt
 np.random.seed(2023)
 
 RESULTS_DIR = "result"
+PLOTS_DIR   = "plot"
 
 # Number of agents
-N_RETAILERS = 5
-N_PROSUMERS = 3
-N_STORAGES  = 2
+N_RETAILERS = 1
+N_PROSUMERS = 1
+N_STORAGES  = 1
 N = N_RETAILERS + N_PROSUMERS + N_STORAGES
 
 # Adjacency
@@ -23,7 +24,7 @@ A = (A + A.T) // 2
 np.fill_diagonal(A,0)
 
 # Time steps
-T = 15
+T = 2
 
 # Agents parameters
 ALPHA   = 1 - 1e-4
@@ -41,11 +42,12 @@ MAX_X_IN  = 1e3
 MAX_X_OUT = 1e3
 
 # Iteration parameters
-K       = 100
-BETA    = 0.5
-GAMMA_1 = 10
-GAMMA_2 = 1e-2
-RHO     = 1
+K_ACTUAL = 1000
+K_PLOT   = 150
+BETA     = 0.5
+GAMMA_1  = 1e-2
+GAMMA_2  = 30
+RHO      = 1
 
 if __name__ == "__main__":
 
@@ -91,9 +93,12 @@ if __name__ == "__main__":
     u_out = np.zeros((N,N,T,K+1))
     p     = np.zeros((N,N,T,K+1))
     y     = np.zeros((N,N,T,K+1))
+    l     = np.zeros((N,N,T,K+1))
+    # Bx_in  = np.zeros((N,N,T,K+1))
+    # Bx_out = np.zeros((N,N,T,K+1))
 
     # Iterative algorithm
-    for k in range(K):
+    for k in range(K_ACTUAL):
         print(f"Iteration {k}: ")
         for i,agent in enumerate(retailers + prosumers + storages):
             # Assign the parameters to agents
@@ -107,35 +112,84 @@ if __name__ == "__main__":
             agent.y_ext.value     = y[:,i,:,k]
 
             agent.prob.solve()
-            print(f"Agent {i}, status: {agent.prob.status}")
+            # print(f"Agent {i}, status: {agent.prob.status}")
 
             # Add the solutions at iteration k
             x_in[i,:,:,k+1]  = agent.x_in.value
             x_out[i,:,:,k+1] = agent.x_out.value
 
+            # Bx_in[:,i,:,k+1]  = agent.x_in.value
+            # Bx_out[:,i,:,k+1] = agent.x_out.value
+
+
             # Update the parameters
-            l = (BETA*(x_in[i,:,:,k+1] + x_out[:,i,:,k+1]) + GAMMA_2*y[:,i,:,k] + u_in[i,:,:,k] + u_out[:,i,:,k]) / (GAMMA_2 + 2*BETA)
-            y[i,:,:,k+1] = (BETA*(x_in[:,i,:,k] + x_out[i,:,:,k]) + GAMMA_2*y[i,:,:,k] + u_in[:,i,:,k] + u_out[i,:,:,k]) / (GAMMA_2 + 2*BETA)
-            p[i,:,:,k+1] = (RHO*g(x_in[:,i,:,k]) + GAMMA_2*p[i,:,:,k]) / (RHO + GAMMA_2)
-            u_in[i,:,:,k+1] = u_in[i,:,:,k] + BETA*(x_in[i,:,:,k+1] - l)
+            l[i,:,:,k+1] = (BETA*(x_in[i,:,:,k+1] + x_out[:,i,:,k+1]) + GAMMA_2*y[:,i,:,k] + u_in[i,:,:,k] + u_out[:,i,:,k]) / (GAMMA_2 + 2*BETA)
+            y[i,:,:,k+1] = (BETA*(x_in[:,i,:,k+1] + x_out[i,:,:,k+1]) + GAMMA_2*y[i,:,:,k] + u_in[:,i,:,k] + u_out[i,:,:,k]) / (GAMMA_2 + 2*BETA)
+            p[i,:,:,k+1] = (RHO*g(x_in[:,i,:,k+1]) + GAMMA_2*p[i,:,:,k]) / (RHO + GAMMA_2)
+            u_in[i,:,:,k+1] = u_in[i,:,:,k] + BETA*(x_in[i,:,:,k+1] - l[i,:,:,k+1])
             u_out[i,:,:,k+1] = u_out[i,:,:,k] + BETA*(x_out[i,:,:,k+1] - y[i,:,:,k+1])
 
     # Save the results
-    # timestamp = datetime.now()
-    # np.savez_compressed(f"{RESULTS_DIR}/{timestamp}.npz", x_in=x_in, x_out=x_out, u_in=u_in, u_out=u_out, p=p, y=y)
+    timestamp = datetime.now()
+    np.savez_compressed(f"{RESULTS_DIR}/{timestamp}.npz", x_in=x_in, x_out=x_out, u_in=u_in, u_out=u_out, p=p, y=y)
 
     # Residuals inf norm
-    res_1_inf_norm = np.max(np.abs(x_in - x_out.transpose((1,0,2,3))), (0,1,2))
-    res_2_inf_norm = np.max(np.abs(x_out - x_in.transpose((1,0,2,3))), (0,1,2))
-    u_inf_norm = np.max(np.abs(u_in - u_out.transpose((1,0,2,3))), (0,1,2))
+    res = np.vstack([x_in - x_out.transpose((1,0,2,3)), x_out - x_in.transpose((1,0,2,3))])
+    res_inf_norm = np.max(np.abs(res), (0,1,2))
+
+    # res_1_inf_norm = np.max(np.abs(x_in - x_out.transpose((1,0,2,3))), (0,1,2))
+    # res_2_inf_norm = np.max(np.abs(x_out - x_in.transpose((1,0,2,3))), (0,1,2))
+    # u_inf_norm = np.max(np.abs(u_in - u_out.transpose((1,0,2,3))), (0,1,2))
+    
+    # c1 = np.max(np.abs(x_in - l), (0,1,2))
+    # c2 = np.max(np.abs(x_out - y), (0,1,2))
+
+    # c1 = np.max(np.abs(x_in - Bx_out), (0,1,2))
+    # c2 = np.max(np.abs(x_out - Bx_in), (0,1,2))
 
     # Plotting
-    fig, ax = plt.subplots(2)
-    ax[0].plot(res_1_inf_norm)
-    ax[1].plot(u_inf_norm)
+    latex_preamble = [
+        r'\usepackage{amsfonts}',
+        r'\usepackage{amssymb}',
+        r'\usepackage{amsmath}',
+    ]
+
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern"],
+        "text.latex.preamble": "".join(latex_preamble)
+    })
+
+    fig, ax = plt.subplots(2, figsize=(3.5, 3.5), sharex=True)
+    for i in range(2):
+        ax[i].xaxis.set_tick_params(labelsize=6)
+        ax[i].grid(axis="both", alpha=0.2, lw=0.5)
+        ax[i].xaxis.set_tick_params(labelsize=6)
+        ax[i].yaxis.set_tick_params(labelsize=6)
+        ax[0].axhline(0, c="k", alpha=0.4, lw=0.8)
+    ax[-1].set_xlabel("Iterations [$k$]", fontsize=8)
+
+    ax[0].plot(res_inf_norm[:K_PLOT], lw=0.9)  
+    ax[0].set_ylabel(
+        r'$\left\|\text{col}\left(\begin{bmatrix}'
+        r'\hat{\mathbf{x}}_i - \check{\mathbf{x}}_i \\'
+        r'\check{\mathbf{x}}_i - \hat{\mathbf{x}}_i'
+        r'\end{bmatrix}\right)_{i \in \mathcal{A}}\right\|_\infty$',
+        fontsize=6
+    )
+    
+    plt.savefig(f"{PLOTS_DIR}/residuals.pdf", bbox_inches="tight")
+
+    # ax[1].plot(res_2_inf_norm)
+    # ax[1].axhline(0, c="k", alpha=0.4)
+    # plt.grid(axis="both", alpha=0.2)
+
+    # ax[0].plot(res_1_inf_norm)
+    # ax[1].plot(u_inf_norm)
     # ax.plot(res_2_inf_norm)
+
     plt.show()
-    # np.load(f"{RESULTS_DIR}/{timestamp}.npz") 
         
 
     
