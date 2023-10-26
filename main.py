@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 
 np.random.seed(2023)
 
-RESULTS_DIR = "result"
-PLOTS_DIR   = "plot"
+RESULTS_DIR  = "result"
+PLOTS_DIR    = "plot"
+SAVE_RESULTS = False 
 
 # Number of agents
 N_RETAILERS = 1
@@ -55,45 +56,30 @@ if __name__ == "__main__":
     g = lambda x: x.sum(axis=0) + 0.05
 
     # Intialize agents
-    retailers = [
-        Retailer(
-            a_in=A_IN[i], a_out=A_OUT[i], 
-            N=N, T=T, is_neighbour=A[i], 
-            max_x_in=MAX_X_IN, max_x_out=MAX_X_OUT, 
-            beta=BETA, gamma_1=GAMMA_1
-        ) \
-        for i in range(N_RETAILERS)
-    ]
+    agents_common_params = {
+        "max_x_in": MAX_X_IN,
+        "max_x_out": MAX_X_OUT,
+        "beta" : BETA,
+        "gamma_1": GAMMA_1,
+        "T": T,
+        "N": N
+    }
 
-    prosumers = [
-        Prosumer(
-            delta=DELTA[i],
-            N=N, T=T, is_neighbour=A[i],
-            max_x_in=MAX_X_IN, max_x_out=MAX_X_OUT,
-            beta=BETA, gamma_1=GAMMA_1
-        )
-        for i in range(N_RETAILERS, N_PROSUMERS + N_RETAILERS)
-    ]
-
+    retailers = [Retailer(a_in=A_IN[i], a_out=A_OUT[i], is_neighbour=A[i], **agents_common_params) for i in range(N_RETAILERS)]
+    prosumers = [Prosumer(delta=DELTA[i], is_neighbour=A[i], **agents_common_params) for i in range(N_RETAILERS, N_PROSUMERS + N_RETAILERS)]
     storages = [
-        Storage(
-            s0=S0[i], s_max=S_MAX[i], alpha=ALPHA, eta_in=ETA_IN, eta_out=ETA_OUT,
-            N=N, T=T, is_neighbour=A[i],
-            max_x_in=MAX_X_IN, max_x_out=MAX_X_OUT,
-            beta=BETA, gamma_1=GAMMA_1
-        )
+        Storage(s0=S0[i], s_max=S_MAX[i], alpha=ALPHA, eta_in=ETA_IN, eta_out=ETA_OUT, is_neighbour=A[i], **agents_common_params)
         for i in range(N_RETAILERS + N_PROSUMERS, N)
     ]
 
-
     # Initialize variables and parameters
-    x_in  = np.zeros((N,N,T,K+1))
-    x_out = np.zeros((N,N,T,K+1))
-    u_in  = np.zeros((N,N,T,K+1)) 
-    u_out = np.zeros((N,N,T,K+1))
-    p     = np.zeros((N,N,T,K+1))
-    y     = np.zeros((N,N,T,K+1))
-    l     = np.zeros((N,N,T,K+1))
+    x_in  = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16)
+    x_out = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16)
+    u_in  = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16) 
+    u_out = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16)
+    p     = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16)
+    y     = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16)
+    l     = np.zeros((N,N,T,K_ACTUAL+1), dtype=np.float16)
     # Bx_in  = np.zeros((N,N,T,K+1))
     # Bx_out = np.zeros((N,N,T,K+1))
 
@@ -130,14 +116,12 @@ if __name__ == "__main__":
             u_out[i,:,:,k+1] = u_out[i,:,:,k] + BETA*(x_out[i,:,:,k+1] - y[i,:,:,k+1])
 
     # Save the results
-    timestamp = datetime.now()
-    np.savez_compressed(f"{RESULTS_DIR}/{timestamp}.npz", x_in=x_in, x_out=x_out, u_in=u_in, u_out=u_out, p=p, y=y)
+    if SAVE_RESULTS:
+        timestamp = datetime.now()
+        np.savez_compressed(f"{RESULTS_DIR}/{timestamp}.npz", x_in=x_in, x_out=x_out, u_in=u_in, u_out=u_out, p=p, y=y)
 
     # Residuals inf norm
-    res = np.vstack([x_in - x_out.transpose((1,0,2,3)), x_out - x_in.transpose((1,0,2,3))])
-    res_inf_norm = np.max(np.abs(res), (0,1,2))
-
-    # res_1_inf_norm = np.max(np.abs(x_in - x_out.transpose((1,0,2,3))), (0,1,2))
+        # res_1_inf_norm = np.max(np.abs(x_in - x_out.transpose((1,0,2,3))), (0,1,2))
     # res_2_inf_norm = np.max(np.abs(x_out - x_in.transpose((1,0,2,3))), (0,1,2))
     # u_inf_norm = np.max(np.abs(u_in - u_out.transpose((1,0,2,3))), (0,1,2))
     
@@ -170,6 +154,14 @@ if __name__ == "__main__":
         ax[0].axhline(0, c="k", alpha=0.4, lw=0.8)
     ax[-1].set_xlabel("Iterations [$k$]", fontsize=8)
 
+    # Flow variables from the perspective of the neighbors
+    x_in_ext  = x_in.transpose((1,0,2,3))
+    x_out_ext = x_out.transpose((1,0,2,3))
+
+    # Residual plot
+    res = np.vstack([x_in - x_out_ext, x_out - x_in_ext])
+    res_inf_norm = np.max(np.abs(res), axis=(0,1,2))
+
     ax[0].plot(res_inf_norm[:K_PLOT], lw=0.9)  
     ax[0].set_ylabel(
         r'$\left\|\text{col}\left(\begin{bmatrix}'
@@ -178,9 +170,23 @@ if __name__ == "__main__":
         r'\end{bmatrix}\right)_{i \in \mathcal{A}}\right\|_\infty$',
         fontsize=6
     )
-    
-    plt.savefig(f"{PLOTS_DIR}/residuals.pdf", bbox_inches="tight")
 
+    # GNE plot
+    sol = np.vstack([x_in, x_out, p])
+    gne = sol[:,:,:,K_ACTUAL,None]
+    dist_from_gne = np.sum((sol - gne)**2, axis=(0,1,2)) 
+
+    ax[1].plot(dist_from_gne[:K_PLOT], lw=0.9)
+    ax[1].set_ylabel(
+       r'$\left\|\begin{bmatrix}\hat{\mathbf{x}} \\'
+       r'\check{\mathbf{x}} \\ \mathbf{p} \end{bmatrix} -'
+       r'\begin{bmatrix} \hat{\mathbf{x}}^* \\ \check{\mathbf{x}}^* \\'
+       r'\mathbf{p}^*\end{bmatrix}\right\|$',
+       fontsize=6
+    )
+    plt.savefig(f"{PLOTS_DIR}/residual_and_gne.pdf", bbox_inches="tight")
+
+    
     # ax[1].plot(res_2_inf_norm)
     # ax[1].axhline(0, c="k", alpha=0.4)
     # plt.grid(axis="both", alpha=0.2)
