@@ -1,4 +1,4 @@
-Simulation code for the paper *A Game-Theoretical Control Framework for Transactive Energy Trading in Energy Communities*. 
+Simulation code for the paper *A Game-Theoretical Control Framework for Transactive Energy Trading in Energy Communities* [[IEEE](https://ieeexplore.ieee.org/document/10591157)]. 
 
 ## Cite as
 ```
